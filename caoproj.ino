@@ -1,77 +1,123 @@
+#include <HTTPClient.h>
+#include <WiFi.h>
+#include <ArduinoJson.h>
 #include <LiquidCrystal.h>
-#include <WiFi.h> // Include the Wi-Fi library
 
-const char* ssid = "PTCL-BB"; // The SSID (name) of the Wi-Fi network you want to connect to
-const char* password = "hussain12"; // The password of the Wi-Fi network
+const char* ssid = "PTCL-BB";
+const char* password = "hussain12";
 
-// Create An LCD Object. Signals: [ RS, EN, D4, D5, D6, D7 ]
-LiquidCrystal lcd(13, 12, 14, 27, 26, 25);
+int count;
 
-//defining pins for US sensor
+const int rs = 13, en = 12, d4 = 14, d5 = 27, d6 = 26, d7 = 25;
+LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
+
 const int trig = 33;
 const int echo = 32;
-
-//defining url to get data
-const char* url="https://services1.arcgis.com/0MSEUqKaxRlEPj5g/arcgis/rest/services/ncov_cases/FeatureServer/1/query?f=json&where=(Country_Region=%27Pakistan%27)&returnGeometry=false&outFields=Country_Region,Confirmed,Recovered";
+//const int pump = 19;
 
 #define sound_speed 0.034 //speed of sound in cm/microsec
-long duration;//time taken by pulse to travel
-float distancecm;//distance of obstacle fro, sensor
+long duration;
+float distancecm; 
 
-void setup()
-{
-  Serial.begin(115200); // Start the Serial communication to send messages to the computer
-  delay(1000);
-  Serial.println('\n');
-  pinMode(trig, OUTPUT); // Sets the trig Pin as an Output
-  pinMode(echo, INPUT); // Sets the echo Pin as an Input
+const char* url = "https://services1.arcgis.com/0MSEUqKaxRlEPj5g/arcgis/rest/services/ncov_cases/FeatureServer/1/query?f=json&where=(Country_Region=%27Pakistan%27)&returnGeometry=false&outFields=Country_Region,Confirmed,Recovered";
+
+void setup() {
+
+  Serial.begin(115200);
+  delay(2000);
+  pinMode(trig, OUTPUT);
+  pinMode(echo, INPUT);
+  //pinMode(pump, OUTPUT);
+  //digitalWrite(pump, LOW); 
   
   ///////////////////////////////////////////LCD setup///////////////////////////////////////////////
-  // Initialize The LCD. Parameters: [ Columns, Rows ]
   lcd.begin(16, 2);
-  lcd.clear(); // Clears The LCD Display
-  lcd.setCursor(0,0); // Display The First Message In Home Position (0, 0)
-  lcd.print("LCD works again!");
+  lcd.clear();
+  lcd.setCursor(0,0);
+  lcd.print("Covid19 Tracker");
   lcd.setCursor(0,1);
   lcd.print("Hand Sanitizer");
-  
+
   ///////////////////////////////////////////wifi setup///////////////////////////////////////////////
-  WiFi.begin(ssid, password); // Connect to the network
-  Serial.print("Connecting to ");
-  Serial.print(ssid);
-  while (WiFi.status() != WL_CONNECTED) { // Wait for the Wi-Fi to connect
-  delay(500);
-  Serial.print('.');
+  
+ Serial.println("Connecting to ");
+  Serial.println(ssid);
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED)
+  {
+    delay(500);
+    Serial.print(".");              // print ... till not connected
   }
-  Serial.println('\n');
-  Serial.println("Wifi connected!");
+  Serial.println("WiFi connected");
 }
 
 void sensor(){
-  digitalWrite(trig,LOW);//clears pin
+  
+  digitalWrite(trig, LOW); //clears trig pin
   delayMicroseconds(2);
-  
-  // Sets the trig Pin on HIGH state for 10 micro seconds
   digitalWrite(trig, HIGH);
-  delayMicroseconds(10);
+  delayMicroseconds(10);    // Sets the trig Pin on HIGH state for 10 micro seconds
   digitalWrite(trig, LOW);
-  duration=pulseIn(echo, HIGH);
-  distancecm= duration * sound_speed / 2; //distance of obstacle from sensor
-  
-  // Prints the distance in the Serial Monitor
-  if(distancecm <= 15){
+  duration = pulseIn(echo, HIGH);
+  distancecm = duration * sound_speed  / 2; //distance of obstacle from sensor
+
+  if (distancecm <= 15){
     Serial.print("Distance (cm): ");
     Serial.println(distancecm);
-    Serial.println('\n');
     Serial.print("Opening Pump");
-//    digitalWrite(pump, HIGH);
-//    delay(2000);
-//    digitalWrite(pump, LOW);
-//    ESP.restart();
-  }
-  delay(1000); //1 second delay
+    //digitalWrite(pump, HIGH);
+    //delay(2000);
+    //digitalWrite(pump, LOW);
+    //ESP.restart();
+    }
 }
-void loop(){
+
+void loop() {
+
   sensor();
-  
+  HTTPClient https;
+  String data;
+  https.begin(url); //establishes connection with the url
+  int httpCode = https.GET();
+  if (httpCode > 0) { //Check for the returning code //success
+    String payload = https.getString(); 
+    Serial.println(payload);
+    DynamicJsonDocument doc(2048);
+    deserializeJson(doc, payload);
+    JsonArray fields = doc["fields"];
+    JsonObject features_0_attributes = doc["features"][0]["attributes"];
+    long features_0_attributes_Last_Update = features_0_attributes["Last_Update"];
+    int features_0_attributes_Confirmed = features_0_attributes["Confirmed"];
+    int features_0_attributes_Deaths = features_0_attributes["Deaths"];
+    int features_0_attributes_Recovered = features_0_attributes["Recovered"];
+    if (count < 3){
+
+      lcd.setCursor(0, 0);
+      lcd.print("Confirmed:");
+      lcd.print(features_0_attributes_Confirmed); 
+      lcd.setCursor(0, 1);  
+      lcd.print("Recovered:");
+      lcd.print(features_0_attributes_Recovered);
+    }
+    if (count > 3){
+
+      lcd.clear();
+      lcd.setCursor(0, 0);
+      lcd.print("Deaths:");
+      lcd.print(features_0_attributes_Deaths); 
+      lcd.setCursor(0, 1);
+      lcd.print("Last Update:");
+      lcd.print(features_0_attributes_Last_Update); 
+    }
+
+    if (count > 6){
+      count = 0; 
+    }
+ } 
+  else {
+    Serial.println("Error on HTTP request");
+ }
+
+  https.end();
+  count++; 
 }
