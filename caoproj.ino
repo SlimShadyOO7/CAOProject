@@ -11,25 +11,22 @@ int count;
 const int rs = 13, en = 12, d4 = 14, d5 = 27, d6 = 26, d7 = 25;
 LiquidCrystal lcd(rs, en, d4, d5, d6, d7);
 
-const int trig = 33;
-const int echo = 32;
-//const int pump = 19;
-
-#define sound_speed 0.034 //speed of sound in cm/microsec
-long duration;
-float distancecm; 
-
 const char* url = "https://services1.arcgis.com/0MSEUqKaxRlEPj5g/arcgis/rest/services/ncov_cases/FeatureServer/1/query?f=json&where=(Country_Region=%27Pakistan%27)&returnGeometry=false&outFields=Country_Region,Confirmed,Recovered";
 
-void setup() {
+#define relay 19
+#define echo 18
+#define trig 5
 
-  Serial.begin(115200);
-  delay(2000);
-  pinMode(trig, OUTPUT);
+long duration;
+int distance;
+
+void setup() {
+  Serial.begin(9600);
   pinMode(echo, INPUT);
-  //pinMode(pump, OUTPUT);
-  //digitalWrite(pump, LOW); 
-  
+  pinMode(trig, OUTPUT);
+  pinMode(relay, OUTPUT);
+  digitalWrite(relay, LOW);
+
   ///////////////////////////////////////////LCD setup///////////////////////////////////////////////
   lcd.begin(16, 2);
   lcd.clear();
@@ -51,30 +48,16 @@ void setup() {
   Serial.println("WiFi connected");
 }
 
-void sensor(){
-  
-  digitalWrite(trig, LOW); //clears trig pin
-  delayMicroseconds(2);
-  digitalWrite(trig, HIGH);
-  delayMicroseconds(10);    // Sets the trig Pin on HIGH state for 10 micro seconds
-  digitalWrite(trig, LOW);
-  duration = pulseIn(echo, HIGH);
-  distancecm = duration * sound_speed  / 2; //distance of obstacle from sensor
-
-  if (distancecm <= 15){
-    Serial.print("Distance (cm): ");
-    Serial.println(distancecm);
-    Serial.print("Opening Pump");
-    //digitalWrite(pump, HIGH);
-    //delay(2000);
-    //digitalWrite(pump, LOW);
-    //ESP.restart();
-    }
-}
-
 void loop() {
+  calc_distance();
+  if(distance<10){
+    digitalWrite(relay, LOW);
+  }
+  else{
+    digitalWrite(relay, HIGH);
+  }
 
-  sensor();
+  //////////////////LCD///////////////////////
   HTTPClient https;
   String data;
   https.begin(url); //establishes connection with the url
@@ -120,4 +103,21 @@ void loop() {
 
   https.end();
   count++; 
+}
+
+void calc_distance(){
+  digitalWrite(trig, LOW); //clear trigger pin from previous loop
+  delayMicroseconds(2); //using Microseconds as the delay needs to be very very short - delay uses millisecond
+  digitalWrite(trig, HIGH);
+  delayMicroseconds(10);  //trigger pin high for 10 microsecond - sound wave sent
+  digitalWrite(trig, LOW); //reset trigger pin
+
+  duration = pulseIn(echo, HIGH);  //reading and storing time it takes for echo
+  //duration contains sound travel time in microseconds
+ 
+  distance = duration * 0.034 / 2; // Speed of sound wave divided by 2 (go and back)
+  
+  //distance contains distance in centimeter
+  Serial.println("Distance: ");
+  Serial.println(distance);
 }
